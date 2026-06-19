@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 
 const userSchema = new mongoose.Schema(
   {
@@ -13,32 +13,37 @@ const userSchema = new mongoose.Schema(
       required: true,
       minlength: 6,
     },
-    name: {
+    username: {
       type: String,
       required: true,
     },
     isVerified: {
       type: Boolean,
       default: false,
+      select: false,
     },
     otp: {
       type: String,
+      select: false,
     },
     otpExpiry: {
       type: Date,
+      select: false, // This field will not be returned in queries by default
     },
   },
   { timestamps: true },
 );
 
-// Hash password before saving, and this is for signup and also for password reset
-userSchema.pre("save", async function (next) {
+// Hash password before saving
+userSchema.pre("save", async function () {
+  // If the password hasn't been modified, just return to let Mongoose continue
   if (!this.isModified("password")) {
-    return next();
+    return; 
   }
+  
+  // Hash the password
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
-  next();
 });
 
 // Compare password before login, and this is for login
