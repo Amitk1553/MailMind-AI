@@ -250,13 +250,12 @@ Return ONLY valid JSON.`;
 };
 
 export const getHistory = async (req, res) => {
-  // Changed from exports.getHistory
   try {
-    const history = await EmailHistory.find({ userId: req.user._id }).sort({
+    const history = await EmailHistory.find({ user: req.user._id }).sort({
       createdAt: -1,
     });
     res.status(200).json(history);
   } catch (error) {
-    res.status(500).json({ message: "Failed to fetch history" });
+    res.status(500).json({ message: "Failed to fetch history", error: error.message });
   }
 };
