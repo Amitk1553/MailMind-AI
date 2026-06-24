@@ -1,17 +1,20 @@
 import express from "express";
+import cors from "cors";
 import authRoutes from "./routes/authRoutes.js";
 import aiRoutes from "./routes/aiRoutes.js";
 import dotenv from "dotenv";
 import connectDB from "./config/db.js";
-const PORT = process.env.PORT || 3000;
 
-//env variables
+//load env variables
 dotenv.config();
 
+const PORT = process.env.PORT || 3000;
 //connect to database
 connectDB();
 
 const app = express();
+
+app.use(cors());
 
 //middleware to parse JSON bodies
 app.use(express.json({ limit: "10mb" }));

@@ -85,7 +85,7 @@ export const verifyOtp = async (req, res) => {
     user.otpExpiry = undefined;
     await user.save();
     
-    // FIX 2: Generate token upon verification so the user doesn't have to log in manually right after signing up
+    // Generate token upon verification so the user doesn't have to log in manually right after signing up
     const token = generateAuthToken(user._id);
 
     res.status(200).json({ 
