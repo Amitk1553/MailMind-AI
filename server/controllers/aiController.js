@@ -1,12 +1,13 @@
 import axios from "axios";
-import EmailHistory from "../models/EmailHistory.js"; // Added .js extension
+import EmailHistory from "../models/EmailHistory.js";
+import redisClient from "../config/redisClient.js";
 
 export const generateEmail = async (req, res) => {
-  // Changed from exports.generateEmail
   console.log("🔍 REQUEST RECEIVED");
   console.log("Headers:", req.headers);
   console.log("INCOMING BODY: ", req.body);
   console.log("User Info:", req.user);
+  
   try {
     const { prompt } = req.body;
     console.log("✅ Extracted prompt:", prompt);
@@ -33,13 +34,25 @@ export const generateEmail = async (req, res) => {
         .json({ message: "Prompt cannot exceed 2000 characters" });
     }
 
-    // Call Groq API (Free tier - No quota issues!)
-    const groqApiKey = process.env.GROQ_API_KEY;
-    if (!groqApiKey) {
-      return res.status(500).json({ message: "AI service is not configured" });
-    }
+    //  STEP 1: Check if this specific prompt is already cached in Redis
+    const normalizedPrompt = prompt.trim().toLowerCase();
+    const promptCacheKey = `ai_prompt:${normalizedPrompt}`;
+    const cachedAIResponse = await redisClient.get(promptCacheKey);
 
-    const systemPrompt = `You are an expert job outreach strategist.
+    let emailData;
+
+    if (cachedAIResponse) {
+      console.log("🟢 CACHE HIT: Serving AI response from Redis");
+      emailData = JSON.parse(cachedAIResponse);
+    } else {
+      console.log("🔴 CACHE MISS: Calling Groq API...");
+      
+      const groqApiKey = process.env.GROQ_API_KEY;
+      if (!groqApiKey) {
+        return res.status(500).json({ message: "AI service is not configured" });
+      }
+
+      const systemPrompt = `You are an expert job outreach strategist.
 
 Your task is to generate a HIGH-CONVERTING cold email to a recruiter for a job opportunity.
 
@@ -149,76 +162,80 @@ Clear CTA.
 
 Return ONLY valid JSON.`;
 
-    const fullPrompt = `${systemPrompt}\n\nUser REQUEST: "${prompt.trim()}"\n\nGenerate STRONG cold email even if prompt is short. Make smart assumptions. Return ONLY valid JSON:\n{"subject": "...", "emailBody": "...", "linkedInDM": "...", "followUpEmail": "..."}`;
-    const aiResponse = await axios.post(
-      "https://api.groq.com/openai/v1/chat/completions",
-      {
-        model: "llama-3.3-70b-versatile",
-        messages: [
-          {
-            role: "user",
-            content: fullPrompt,
-          },
-        ],
-        temperature: 0.7,
-        max_tokens: 1024,
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${groqApiKey}`,
-          "Content-Type": "application/json",
+      const fullPrompt = `${systemPrompt}\n\nUser REQUEST: "${prompt.trim()}"\n\nGenerate STRONG cold email even if prompt is short. Make smart assumptions. Return ONLY valid JSON:\n{"subject": "...", "emailBody": "...", "linkedInDM": "...", "followUpEmail": "..."}`;
+      
+      const aiResponse = await axios.post(
+        "https://api.groq.com/openai/v1/chat/completions",
+        {
+          model: "llama-3.3-70b-versatile",
+          messages: [
+            {
+              role: "user",
+              content: fullPrompt,
+            },
+          ],
+          temperature: 0.7,
+          max_tokens: 1024,
         },
-        timeout: 30000,
-      },
-    );
-
-    // Parse the Groq response
-    if (
-      !aiResponse.data.choices ||
-      !aiResponse.data.choices[0] ||
-      !aiResponse.data.choices[0].message
-    ) {
-      throw new Error("Invalid response from Groq API");
-    }
-
-    const generatedText = aiResponse.data.choices[0].message.content;
-
-    // Extract JSON from the response
-    const jsonMatch = generatedText.match(/\{[\s\S]*\}/);
-    let parsedResponse;
-
-    try {
-      parsedResponse = jsonMatch
-        ? JSON.parse(jsonMatch[0])
-        : JSON.parse(generatedText);
-    } catch (parseError) {
-      console.error(
-        "JSON parse error:",
-        parseError,
-        "Generated text:",
-        generatedText,
+        {
+          headers: {
+            Authorization: `Bearer ${groqApiKey}`,
+            "Content-Type": "application/json",
+          },
+          timeout: 30000,
+        },
       );
-      return res.status(500).json({
-        message: "Failed to parse AI response",
-        error: "The AI generated invalid JSON. Please try again.",
+
+      if (
+        !aiResponse.data.choices ||
+        !aiResponse.data.choices[0] ||
+        !aiResponse.data.choices[0].message
+      ) {
+        throw new Error("Invalid response from Groq API");
+      }
+
+      const generatedText = aiResponse.data.choices[0].message.content;
+      const jsonMatch = generatedText.match(/\{[\s\S]*\}/);
+      let parsedResponse;
+
+      try {
+        parsedResponse = jsonMatch
+          ? JSON.parse(jsonMatch[0])
+          : JSON.parse(generatedText);
+      } catch (parseError) {
+        console.error(
+          "JSON parse error:",
+          parseError,
+          "Generated text:",
+          generatedText,
+        );
+        return res.status(500).json({
+          message: "Failed to parse AI response",
+          error: "The AI generated invalid JSON. Please try again.",
+        });
+      }
+
+      emailData = {
+        subject: parsedResponse.subject || "New Opportunity",
+        emailBody: parsedResponse.emailBody || "",
+        linkedInDM: parsedResponse.linkedInDM || "",
+        followUpEmail: parsedResponse.followUpEmail || "",
+      };
+
+      if (!emailData.subject || !emailData.emailBody) {
+        return res.status(500).json({
+          message: "AI generated incomplete email data. Please try again.",
+        });
+      }
+
+      //  STEP 2: Save the fresh AI response to Redis for 1 hour (3600 seconds)
+      await redisClient.set(promptCacheKey, JSON.stringify(emailData), {
+        EX: 3600,
       });
     }
 
-    const emailData = {
-      subject: parsedResponse.subject || "New Opportunity",
-      emailBody: parsedResponse.emailBody || "",
-      linkedInDM: parsedResponse.linkedInDM || "",
-      followUpEmail: parsedResponse.followUpEmail || "",
-    };
-
-    // Validate response data
-    if (!emailData.subject || !emailData.emailBody) {
-      return res.status(500).json({
-        message: "AI generated incomplete email data. Please try again.",
-      });
-    }
-
-    // Save to history
+    //  STEP 3: Create the database entry for the specific user
+    // We do this regardless of whether the AI data came from Redis or Groq
     const historyEntry = await EmailHistory.create({
       user: req.user._id,
       prompt: prompt.trim(),
@@ -228,7 +245,12 @@ Return ONLY valid JSON.`;
       followUpEmail: emailData.followUpEmail,
     });
 
+    //  STEP 4: Invalidate (delete) the user's history cache since they just added a new entry
+    const userHistoryCacheKey = `user_history:${req.user._id}`;
+    await redisClient.del(userHistoryCacheKey);
+
     res.status(200).json(historyEntry);
+    
   } catch (error) {
     console.error(
       "AI Generation Error:",
@@ -251,9 +273,29 @@ Return ONLY valid JSON.`;
 
 export const getHistory = async (req, res) => {
   try {
-    const history = await EmailHistory.find({ user: req.user._id }).sort({
+    const userId = req.user._id;
+    const historyCacheKey = `user_history:${userId}`;
+
+    //  STEP 5: Check Redis for the user's history
+    const cachedHistory = await redisClient.get(historyCacheKey);
+
+    if (cachedHistory) {
+      console.log("🟢 CACHE HIT: Serving User History from Redis");
+      return res.status(200).json(JSON.parse(cachedHistory));
+    }
+
+    console.log("🔴 CACHE MISS: Fetching User History from MongoDB");
+    
+    // Fetch from Database
+    const history = await EmailHistory.find({ user: userId }).sort({
       createdAt: -1,
     });
+
+    //  STEP 6: Save the fetched history to Redis for 15 minutes (900 seconds)
+    await redisClient.set(historyCacheKey, JSON.stringify(history), {
+      EX: 900,
+    });
+
     res.status(200).json(history);
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch history", error: error.message });

@@ -4,6 +4,7 @@ import authRoutes from "./routes/authRoutes.js";
 import aiRoutes from "./routes/aiRoutes.js";
 import dotenv from "dotenv";
 import connectDB from "./config/db.js";
+import './config/redisClient.js';
 
 //load env variables
 dotenv.config();
