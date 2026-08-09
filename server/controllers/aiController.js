@@ -3,38 +3,38 @@ import EmailHistory from "../models/EmailHistory.js";
 import redisClient from "../config/redisClient.js";
 
 export const generateEmail = async (req, res) => {
-  console.log("🔍 REQUEST RECEIVED");
+  console.log("REQUEST RECEIVED");
   console.log("Headers:", req.headers);
   console.log("INCOMING BODY: ", req.body);
   console.log("User Info:", req.user);
   
   try {
     const { prompt } = req.body;
-    console.log("✅ Extracted prompt:", prompt);
+    console.log("Extracted prompt:", prompt);
 
     if (!prompt) {
-      console.log("❌ Validation failed: Prompt is required");
+      console.log("Validation failed: Prompt is required");
       return res.status(400).json({ message: "Prompt is required" });
     }
 
     if (typeof prompt !== "string") {
-      console.log("❌ Validation failed: Prompt must be a string");
+      console.log("Validation failed: Prompt must be a string");
       return res.status(400).json({ message: "Prompt must be a string" });
     }
 
     if (prompt.trim().length === 0) {
-      console.log("❌ Validation failed: Prompt cannot be empty");
+      console.log("Validation failed: Prompt cannot be empty");
       return res.status(400).json({ message: "Prompt cannot be empty" });
     }
 
     if (prompt.length > 2000) {
-      console.log("❌ Validation failed: Prompt too long");
+      console.log("Validation failed: Prompt too long");
       return res
         .status(400)
         .json({ message: "Prompt cannot exceed 2000 characters" });
     }
 
-    //  STEP 1: Check if this specific prompt is already cached in Redis
+    //  first I will check if this specific prompt is already cached in Redis
     const normalizedPrompt = prompt.trim().toLowerCase();
     const promptCacheKey = `ai_prompt:${normalizedPrompt}`;
     const cachedAIResponse = await redisClient.get(promptCacheKey);
@@ -42,10 +42,10 @@ export const generateEmail = async (req, res) => {
     let emailData;
 
     if (cachedAIResponse) {
-      console.log("🟢 CACHE HIT: Serving AI response from Redis");
+      console.log("CACHE HIT: Serving AI response from Redis");
       emailData = JSON.parse(cachedAIResponse);
     } else {
-      console.log("🔴 CACHE MISS: Calling Groq API...");
+      console.log("CACHE MISS: Calling Groq API...");
       
       const groqApiKey = process.env.GROQ_API_KEY;
       if (!groqApiKey) {
@@ -228,13 +228,13 @@ Return ONLY valid JSON.`;
         });
       }
 
-      //  STEP 2: Save the fresh AI response to Redis for 1 hour (3600 seconds)
+      // this is the second step I am saving the AI response to Redis for 1 hour, I am saving it for one hour only else RAM will get full since redis is a in-memory data store.
       await redisClient.set(promptCacheKey, JSON.stringify(emailData), {
         EX: 3600,
       });
     }
 
-    //  STEP 3: Create the database entry for the specific user
+    //  Now I will save the generated email to mongoDB for the user, so that they can see their history of generated emails. This is the third step.
     // We do this regardless of whether the AI data came from Redis or Groq
     const historyEntry = await EmailHistory.create({
       user: req.user._id,
@@ -245,7 +245,7 @@ Return ONLY valid JSON.`;
       followUpEmail: emailData.followUpEmail,
     });
 
-    //  STEP 4: Invalidate (delete) the user's history cache since they just added a new entry
+    // when user will generate a new email I will delete the saved email history from redis so that it will fetch the new email as well from mongoDB instead of fetching it from redis the old one only.
     const userHistoryCacheKey = `user_history:${req.user._id}`;
     await redisClient.del(userHistoryCacheKey);
 
@@ -276,22 +276,22 @@ export const getHistory = async (req, res) => {
     const userId = req.user._id;
     const historyCacheKey = `user_history:${userId}`;
 
-    //  STEP 5: Check Redis for the user's history
+    // this is step 4 checking the redis for the user history if it is present in redis then I will serve it from redis else I will fetch it from mongoDB and save it to redis for 15 minutes.
     const cachedHistory = await redisClient.get(historyCacheKey);
 
     if (cachedHistory) {
-      console.log("🟢 CACHE HIT: Serving User History from Redis");
+      console.log("CACHE HIT: Serving User History from Redis");
       return res.status(200).json(JSON.parse(cachedHistory));
     }
 
-    console.log("🔴 CACHE MISS: Fetching User History from MongoDB");
+    console.log("CACHE MISS: Fetching User History from MongoDB");
     
     // Fetch from Database
     const history = await EmailHistory.find({ user: userId }).sort({
       createdAt: -1,
     });
 
-    //  STEP 6: Save the fetched history to Redis for 15 minutes (900 seconds)
+    //  this is step 5 saving the user history to redis for 15 minutes so that next time when user will fetch the history it will serve it from redis instead of fetching it from mongoDB.
     await redisClient.set(historyCacheKey, JSON.stringify(history), {
       EX: 900,
     });
