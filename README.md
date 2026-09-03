@@ -24,22 +24,20 @@ The platform utilizes a modern decoupled microservices-inspired flow to ensure i
                  ├──► [ In-Memory Cache: Upstash Redis Cluster ] (Fast Path)
                  │     (TTL: 1 Hour for Prompt Hits)
                  │
-                 ├──► [ Inference Layer: Groq API / Llama 3.3 ] (Slow Path)
+                 ├──► [ Inference Layer: Gemini API / Gemini 3.6 Flash ] (Slow Path)
                  │
                  └──► [ Data Layer: MongoDB Atlas Cluster ]
                        (User Schemas & Transactional Email History)
-```
 
-## Architectural Key Highlights
 
+Architectural Key Highlights
 Dual-Tier Cache Strategy: Generative AI requests bypass the external inference engine if an identical payload signature is found within the Upstash Redis cache instance, dropping response times from seconds to sub-milliseconds.
 
 Asynchronous Cache Invalidation: Write operations to the transactional database automatically purge specific user query histories cached in memory, ensuring immediate state consistency across distributed updates.
 
 Secure Session Lifecycles: Multi-stage authentication utilizing cryptographically signed JSON Web Tokens (JWT) paired with an active NodeMailer/Gmail SMTP One-Time Password (OTP) verification engine.
 
-## Technology Stack
-
+Technology Stack
 Frontend Core
 
 Library/Runtime: React.js (Vite Native Compilation Engine)
@@ -58,11 +56,10 @@ Primary Database: MongoDB Atlas (Object Data Modeling via Mongoose ODM)
 
 Caching & Session Layer: Redis (TCP-based Upstash serverless infrastructure distributed over TLS)
 
-Inference Engine: Groq SDK Cloud Compute (Llama-3.3-70b-versatile optimization)
+Inference Engine: Google Gen AI SDK (Gemini 3.6 Flash optimization)
 
-## Project Directory Structure
-
-```text
+Project Directory Structure
+Plaintext
 MailMind-AI/
 ├── client/                     # Frontend React + Vite application
 │   └── src/
@@ -86,7 +83,7 @@ MailMind-AI/
 │   │   └── redisClient.js      # Upstash cloud Redis client for in-memory caching
 │   ├── controllers/            # Core business logic and request handling
 │   │   ├── authController.js   # Handles registration, OTP generation, and JWT issuance
-│   │   └── aiController.js     # Manages Groq API inference, Redis caching, and MongoDB logging
+│   │   └── aiController.js     # Manages Gemini API inference, Redis caching, and MongoDB logging
 │   ├── middleware/             # Express request interceptors
 │   │   └── authMiddleware.js   # Route guard that verifies and decodes JWT Bearer tokens
 │   ├── models/                 # Mongoose Object Data Modeling (ODM) schemas
@@ -99,61 +96,44 @@ MailMind-AI/
 │   │   └── sendOtpEmail.js     # Nodemailer SMTP integration for dispatching security codes
 │   └── server.js               # Primary Express application entry point and port listener
 └── package.json                # Monorepo configuration for concurrent script execution
-```
-
-## Local Installation & Set Up
-
-### Prerequisites
-
+Local Installation & Set Up
+Prerequisites
 Node.js (v18+ recommended)
 
 Docker Desktop (To run local Redis container)
 
 MongoDB Atlas cluster string or local MongoDB instance
 
-### 1. Clone the Codebase
-
-```bash
-git clone https://github.com/Amitk1553/MailMind-AI.git
+1. Clone the Codebase
+Bash
+git clone [https://github.com/Amitk1553/MailMind-AI.git](https://github.com/Amitk1553/MailMind-AI.git)
 cd MailMind-AI
-```
-
-### 2. Configure Environment Configurations
-
+2. Configure Environment Configurations
 Create a .env file within the server/ directory:
 
-```text
+Plaintext
 PORT=3000
 MONGO_URI=your_mongodb_connection_string
 JWT_SECRET=your_jwt_signing_secret
-GROQ_API_KEY=your_groq_inference_api_key
+GEMINI_API_KEY=your_gemini_api_key
 SMTP_USER=your_gmail_address
 SMTP_PASS=your_gmail_app_password
 REDIS_URL=redis://127.0.0.1:6379
-```
-
-### 3. Initialize Local Redis Database Container
-
+3. Initialize Local Redis Database Container
 Ensure your Docker Desktop Engine is active, then initialize a background Redis server mapping to port 6379:
 
-```bash
+Bash
 docker run --name mailmind-redis -p 6379:6379 -d redis
-```
-
-### 4. Install Dependencies and Bootstrap Infrastructure
-
+4. Install Dependencies and Bootstrap Infrastructure
 From the root workspace repository directory, run the concurrent startup automation tool:
 
-```bash
+Bash
 # Install all root, client, and server dependencies simultaneously
 npm run install-all
 
 # Boot local environments (Frontend on Port 5173, Backend on Port 3000)
 npm run dev
-```
-
-## Core API Specifications
-
+Core API Specifications
 Authentication Microservices
 
 POST /api/auth/register - Creates a partial user record and fires an email verification OTP token.
@@ -164,12 +144,11 @@ POST /api/auth/login - Grants a signed Bearer JWT token valid for client-side st
 
 Generative AI & Cache Middleware Engines
 
-POST /api/ai/generate-email (Protected route - requires authorization header): Evaluates client-side payload strings. Performs key-value matches in Redis memory space. On hit: returns immediately. On miss: calls Groq Llama, sets cache matrix (1-Hour TTL), updates MongoDB ledger, and updates user views.
+POST /api/ai/generate-email (Protected route - requires authorization header): Evaluates client-side payload strings. Performs key-value matches in Redis memory space. On hit: returns immediately. On miss: calls Gemini 3.6 Flash, sets cache matrix (1-Hour TTL), updates MongoDB ledger, and updates user views.
 
 GET /api/ai/history (Protected route - requires authorization header): Returns previous generated payloads directly from Redis user memory space; falls back to MongoDB querying upon initial load.
 
-## Performance Optimization and Security Features
-
+Performance Optimization and Security Features
 Vite Dynamic Compilation: Code splitting and tree shaking implementation automatically optimized for high Lighthouse asset delivery.
 
 Dockerized Environment Development: Eliminates the "works on my machine" paradigm by isolating infrastructure dependencies.
