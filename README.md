@@ -28,7 +28,7 @@ The platform utilizes a modern decoupled microservices-inspired flow to ensure i
                  │
                  └──► [ Data Layer: MongoDB Atlas Cluster ]
                        (User Schemas & Transactional Email History)
-
+```
 
 Architectural Key Highlights
 Dual-Tier Cache Strategy: Generative AI requests bypass the external inference engine if an identical payload signature is found within the Upstash Redis cache instance, dropping response times from seconds to sub-milliseconds.
