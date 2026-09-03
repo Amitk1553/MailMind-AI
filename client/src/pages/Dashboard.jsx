@@ -40,7 +40,7 @@ const Dashboard = () => {
             toast.success('Successfully generated!');
         } catch (error) {
             console.error("AI Generation Error:", error);
-            toast.error('Failed to generate. Please try again.');
+            toast.error(error.response?.data?.error || error.response?.data?.message || 'Failed to generate. Please try again.');
         } finally {
             setLoading(false);
         }

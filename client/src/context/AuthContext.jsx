@@ -7,9 +7,9 @@ export const useAuth = () => {
 
 export const AuthProvider = ({ children }) => { // pure app ko authentication ke liye wrap karne ke liye AuthProvider ka use hota hai
   const [user, setUser] = React.useState(null);
-  const [loading, setLoading] = React.useState(true); // Initially set loading to true until we check localStorage
+  const [loading, setLoading] = React.useState(true);
 
-  useEffect(() => { // useEffect will see the value in localStorage and set the user state accordingly
+  useEffect(() => {
     const userInfo = localStorage.getItem("userInfo");
     if (userInfo) {
       try {
@@ -25,7 +25,7 @@ export const AuthProvider = ({ children }) => { // pure app ko authentication ke
   const login = (userData) => { // userData will contain the user info and token from the backend after successful login
     localStorage.setItem("userInfo", JSON.stringify(userData)); // Store the user info in localStorage, localStorage browser mein data store karne ke liye use hota hai, aur ye data tab tak rahega jab tak user manually remove nahi karega ya browser clear nahi karega,
     // we can use redux or context api to manage the user state in the app, but for now we are using localStorage to persist the user state across page reloads
-    localStorage.setItem("token", userData.token); // Store the token in localStorage
+    localStorage.setItem("token", userData.token);
     setUser(userData);
   };
 

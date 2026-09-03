@@ -2,7 +2,6 @@ import User from "../models/User.js";
 import jwt from "jsonwebtoken";
 import { sendOtpEmail } from "../utils/sendOtpEmail.js";
 
-// FIX 1: Pass the userId as an argument instead of using 'this._id'
 const generateAuthToken = (userId) => {
   return jwt.sign({ userId }, process.env.JWT_SECRET, {
     expiresIn: "24h", // Increased to 24h so you don't get constantly logged out during development
@@ -125,7 +124,7 @@ export const loginUser = async (req, res) => {
       return res.status(400).json({ message: "Invalid email or password" });
     }
     
-    // FIX 3: Use the helper function and return user data
+    // Use the helper function and return user data
     const token = generateAuthToken(user._id);
     
     res.status(200).json({ 

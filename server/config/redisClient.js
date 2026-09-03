@@ -7,7 +7,6 @@ const redisClient = createClient({
 redisClient.on('error', (err) => console.error('Redis Client Error', err));
 redisClient.on('connect', () => console.log('Connected to Redis successfully!'));
 
-// Connect immediately when this file is imported
 await redisClient.connect();
 
 export default redisClient;

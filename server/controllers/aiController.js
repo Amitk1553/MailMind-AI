@@ -1,4 +1,4 @@
-import axios from "axios";
+import { GoogleGenAI } from "@google/genai";
 import EmailHistory from "../models/EmailHistory.js";
 import redisClient from "../config/redisClient.js";
 
@@ -34,7 +34,7 @@ export const generateEmail = async (req, res) => {
         .json({ message: "Prompt cannot exceed 2000 characters" });
     }
 
-    //  first I will check if this specific prompt is already cached in Redis
+    // First I will check if this specific prompt is already cached in Redis
     const normalizedPrompt = prompt.trim().toLowerCase();
     const promptCacheKey = `ai_prompt:${normalizedPrompt}`;
     const cachedAIResponse = await redisClient.get(promptCacheKey);
@@ -45,12 +45,14 @@ export const generateEmail = async (req, res) => {
       console.log("CACHE HIT: Serving AI response from Redis");
       emailData = JSON.parse(cachedAIResponse);
     } else {
-      console.log("CACHE MISS: Calling Groq API...");
+      console.log("CACHE MISS: Calling Gemini API...");
       
-      const groqApiKey = process.env.GROQ_API_KEY;
-      if (!groqApiKey) {
-        return res.status(500).json({ message: "AI service is not configured" });
+      if (!process.env.GEMINI_API_KEY) {
+        return res.status(500).json({ message: "AI service is not configured. Missing GEMINI_API_KEY." });
       }
+
+      // Initialize Gemini explicitly after environment loads
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
       const systemPrompt = `You are an expert job outreach strategist.
 
@@ -67,7 +69,7 @@ IMPORTANT:
 OUTPUT FORMAT (STRICT)
 ====================================================
 
-Return ONLY valid JSON:
+Return ONLY valid JSON matching this structure:
 
 {
   "subject": "",
@@ -156,49 +158,27 @@ FOLLOW-UP EMAIL STRUCTURE
 New angle.
 Emphasize long-term value.
 Professional urgency.
-Clear CTA.
+Clear CTA.`;
 
-====================================================
-
-Return ONLY valid JSON.`;
-
-      const fullPrompt = `${systemPrompt}\n\nUser REQUEST: "${prompt.trim()}"\n\nGenerate STRONG cold email even if prompt is short. Make smart assumptions. Return ONLY valid JSON:\n{"subject": "...", "emailBody": "...", "linkedInDM": "...", "followUpEmail": "..."}`;
+      // Combine system prompt and user prompt into one string
+      const fullPrompt = `${systemPrompt}\n\nUser REQUEST: "${prompt.trim()}"\n\nGenerate STRONG cold email even if prompt is short. Make smart assumptions.`;
       
-      const aiResponse = await axios.post(
-        "https://api.groq.com/openai/v1/chat/completions",
-        {
-          model: "llama-3.3-70b-versatile",
-          messages: [
-            {
-              role: "user",
-              content: fullPrompt,
-            },
-          ],
-          temperature: 0.7,
-          max_tokens: 1024,
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${groqApiKey}`,
-            "Content-Type": "application/json",
-          },
-          timeout: 30000,
-        },
-      );
+      // FIX APPLIED HERE: Stripped down to ONLY model and input parameters
+      const interaction = await ai.interactions.create({
+        model: "gemini-3.6-flash",
+        input: fullPrompt
+      });
 
-      if (
-        !aiResponse.data.choices ||
-        !aiResponse.data.choices[0] ||
-        !aiResponse.data.choices[0].message
-      ) {
-        throw new Error("Invalid response from Groq API");
+      if (!interaction.output_text) {
+        throw new Error("Invalid response from Gemini API");
       }
 
-      const generatedText = aiResponse.data.choices[0].message.content;
-      const jsonMatch = generatedText.match(/\{[\s\S]*\}/);
+      const generatedText = interaction.output_text;
       let parsedResponse;
 
       try {
+        // Re-added the regex parser to safely extract JSON if Gemini wraps it in markdown blocks
+        const jsonMatch = generatedText.match(/\{[\s\S]*\}/);
         parsedResponse = jsonMatch
           ? JSON.parse(jsonMatch[0])
           : JSON.parse(generatedText);
@@ -207,7 +187,7 @@ Return ONLY valid JSON.`;
           "JSON parse error:",
           parseError,
           "Generated text:",
-          generatedText,
+          generatedText
         );
         return res.status(500).json({
           message: "Failed to parse AI response",
@@ -228,14 +208,13 @@ Return ONLY valid JSON.`;
         });
       }
 
-      // this is the second step I am saving the AI response to Redis for 1 hour, I am saving it for one hour only else RAM will get full since redis is a in-memory data store.
+      // Save the AI response to Redis for 1 hour
       await redisClient.set(promptCacheKey, JSON.stringify(emailData), {
         EX: 3600,
       });
     }
 
-    //  Now I will save the generated email to mongoDB for the user, so that they can see their history of generated emails. This is the third step.
-    // We do this regardless of whether the AI data came from Redis or Groq
+    // Save the generated email to mongoDB for the user
     const historyEntry = await EmailHistory.create({
       user: req.user._id,
       prompt: prompt.trim(),
@@ -245,7 +224,7 @@ Return ONLY valid JSON.`;
       followUpEmail: emailData.followUpEmail,
     });
 
-    // when user will generate a new email I will delete the saved email history from redis so that it will fetch the new email as well from mongoDB instead of fetching it from redis the old one only.
+    // Delete the saved email history from redis so it fetches the new entry
     const userHistoryCacheKey = `user_history:${req.user._id}`;
     await redisClient.del(userHistoryCacheKey);
 
@@ -254,10 +233,10 @@ Return ONLY valid JSON.`;
   } catch (error) {
     console.error(
       "AI Generation Error:",
-      error.response?.data || error.message,
+      error.message
     );
 
-    if (error.response?.status === 429) {
+    if (error.message && error.message.includes("429")) {
       return res.status(429).json({
         message: "Too many requests. Please wait a moment before trying again.",
         error: "Rate limit exceeded",
@@ -266,7 +245,7 @@ Return ONLY valid JSON.`;
 
     res.status(500).json({
       message: "Failed to generate email",
-      error: error.response?.data?.error?.message || error.message,
+      error: error.message || "Unknown error occurred",
     });
   }
 };
@@ -276,7 +255,6 @@ export const getHistory = async (req, res) => {
     const userId = req.user._id;
     const historyCacheKey = `user_history:${userId}`;
 
-    // this is step 4 checking the redis for the user history if it is present in redis then I will serve it from redis else I will fetch it from mongoDB and save it to redis for 15 minutes.
     const cachedHistory = await redisClient.get(historyCacheKey);
 
     if (cachedHistory) {
@@ -286,12 +264,10 @@ export const getHistory = async (req, res) => {
 
     console.log("CACHE MISS: Fetching User History from MongoDB");
     
-    // Fetch from Database
     const history = await EmailHistory.find({ user: userId }).sort({
       createdAt: -1,
     });
 
-    //  this is step 5 saving the user history to redis for 15 minutes so that next time when user will fetch the history it will serve it from redis instead of fetching it from mongoDB.
     await redisClient.set(historyCacheKey, JSON.stringify(history), {
       EX: 900,
     });

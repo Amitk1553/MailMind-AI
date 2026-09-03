@@ -31,5 +31,9 @@ const EmailHistorySchema = new mongoose.Schema(
   { timestamps: true },
 );
 
+// Compound index: optimizes the getHistory query → EmailHistory.find({ user }).sort({ createdAt: -1 })
+// Without this index, MongoDB would do a full collection scan + in-memory sort on every history request.
+EmailHistorySchema.index({ user: 1, createdAt: -1 });
+
 const EmailHistory = mongoose.model("EmailHistory", EmailHistorySchema);
 export default EmailHistory;
