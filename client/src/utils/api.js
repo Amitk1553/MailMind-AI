@@ -1,9 +1,8 @@
 import axios from 'axios';
 
-// Automatically switch URLs based on where the app is running
 const API_BASE_URL = import.meta.env.PROD 
-    ? "https://mailmind-backend-hjux.onrender.com/api" // Used when deployed on Vercel
-    : "http://localhost:3000/api";                     // Used when running locally
+    ? "https://mailmind-backend-hjux.onrender.com/api"
+    : "http://localhost:3000/api";                   
 
 const api = axios.create({
     baseURL: API_BASE_URL,
