@@ -110,18 +110,44 @@ export const loginUser = async (req, res) => {
       return res.status(400).json({ message: "Email and password are required" });
     }
     
-    const user = await User.findOne({ email }).select("+password +isVerified");
+    const user = await User.findOne({ email }).select("+password +isVerified +otp +otpExpiry");
     
     if (!user) {
       return res.status(400).json({ message: "Invalid email or password" });
     }
-    if (!user.isVerified) {
-      return res.status(400).json({ message: "Please verify your email first" });
-    }
-    
+
+    // Verify password first before doing anything else
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
       return res.status(400).json({ message: "Invalid email or password" });
+    }
+
+    // If the user's email is not verified, send a fresh OTP and redirect them to verify
+    if (!user.isVerified) {
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
+
+      user.otp = otp;
+      user.otpExpiry = otpExpiry;
+      await user.save();
+
+      // Send OTP email (non-blocking)
+      try {
+        await sendOtpEmail({
+          to: email,
+          subject: "Your OTP Code for MailMind AI",
+          text: `Your OTP code is ${otp}. It will expire in 10 minutes.`,
+        });
+      } catch (emailError) {
+        console.log({ message: "Error sending OTP", error: emailError.message });
+      }
+
+      // Return a 403 with a special flag so the frontend knows to redirect to OTP page
+      return res.status(403).json({
+        message: "Please verify your email to continue. A new OTP has been sent to your email.",
+        requiresVerification: true,
+        email,
+      });
     }
     
     // Use the helper function and return user data
