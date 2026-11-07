@@ -8,6 +8,21 @@ Production Frontend: [https://mailmind-ai.vercel.app](https://mailmind-ai.vercel
 
 Production Backend API: [https://mailmind-backend-hjux.onrender.com](https://mailmind-backend-hjux.onrender.com)
 
+---
+
+## ⚡ Quick Start (One Command)
+
+After cloning and configuring your `.env` file (see setup below), just run this **single command** from the root directory to start both frontend and backend simultaneously:
+
+```bash
+npm run dev
+```
+
+> Frontend runs on **http://localhost:5173** · Backend runs on **http://localhost:3000**  
+> No need to `cd` into separate folders or run two terminals.
+
+---
+
 ## System Architecture & Data Flow
 
 The platform utilizes a modern decoupled microservices-inspired flow to ensure isolation of concerns, secure identity verification, and optimized performance metrics.
@@ -28,37 +43,39 @@ The platform utilizes a modern decoupled microservices-inspired flow to ensure i
                  │
                  └──► [ Data Layer: MongoDB Atlas Cluster ]
                        (User Schemas & Transactional Email History)
+```
 
-Architectural Key Highlights
-Dual-Tier Cache Strategy: Generative AI requests bypass the external inference engine if an identical payload signature is found within the Upstash Redis cache instance, dropping response times from seconds to sub-milliseconds.
+**Architectural Key Highlights**
 
-Asynchronous Cache Invalidation: Write operations to the transactional database automatically purge specific user query histories cached in memory, ensuring immediate state consistency across distributed updates.
+- **Dual-Tier Cache Strategy:** Generative AI requests bypass the external inference engine if an identical payload signature is found within the Upstash Redis cache instance, dropping response times from seconds to sub-milliseconds.
 
-Secure Session Lifecycles: Multi-stage authentication utilizing cryptographically signed JSON Web Tokens (JWT) paired with an active NodeMailer/Gmail SMTP One-Time Password (OTP) verification engine.
+- **Asynchronous Cache Invalidation:** Write operations to the transactional database automatically purge specific user query histories cached in memory, ensuring immediate state consistency across distributed updates.
 
-Technology Stack
-Frontend Core
+- **Secure Session Lifecycles:** Multi-stage authentication utilizing cryptographically signed JSON Web Tokens (JWT) paired with an active NodeMailer/Gmail SMTP One-Time Password (OTP) verification engine.
 
-Library/Runtime: React.js (Vite Native Compilation Engine)
+---
 
-State Management: React Context API (Auth Injection Lifecycle Context)
+## Technology Stack
 
-Styling Framework: Tailwind CSS + PostCSS Layout Utilities
+**Frontend Core**
 
-Client Networking: Axios (Interceptors configured for local/production fallback auto-switching)
+- Library/Runtime: React.js (Vite Native Compilation Engine)
+- State Management: React Context API (Auth Injection Lifecycle Context)
+- Styling Framework: Tailwind CSS + PostCSS Layout Utilities
+- Client Networking: Axios (Interceptors configured for local/production fallback auto-switching)
 
-Backend & Middleware Infrastructure
+**Backend & Middleware Infrastructure**
 
-Server Framework: Node.js + Express.js Router
+- Server Framework: Node.js + Express.js Router
+- Primary Database: MongoDB Atlas (Object Data Modeling via Mongoose ODM)
+- Caching & Session Layer: Redis (TCP-based Upstash serverless infrastructure distributed over TLS)
+- Inference Engine: Google Gen AI SDK (Gemini 3.6 Flash optimization)
 
-Primary Database: MongoDB Atlas (Object Data Modeling via Mongoose ODM)
+---
 
-Caching & Session Layer: Redis (TCP-based Upstash serverless infrastructure distributed over TLS)
+## Project Directory Structure
 
-Inference Engine: Google Gen AI SDK (Gemini 3.6 Flash optimization)
-
-Project Directory Structure
-Plaintext
+```plaintext
 MailMind-AI/
 ├── client/                     # Frontend React + Vite application
 │   └── src/
@@ -95,22 +112,30 @@ MailMind-AI/
 │   │   └── sendOtpEmail.js     # Nodemailer SMTP integration for dispatching security codes
 │   └── server.js               # Primary Express application entry point and port listener
 └── package.json                # Monorepo configuration for concurrent script execution
-Local Installation & Set Up
-Prerequisites
-Node.js (v18+ recommended)
+```
 
-Docker Desktop (To run local Redis container)
+---
 
-MongoDB Atlas cluster string or local MongoDB instance
+## Local Installation & Set Up
 
-1. Clone the Codebase
-Bash
-git clone [https://github.com/Amitk1553/MailMind-AI.git](https://github.com/Amitk1553/MailMind-AI.git)
+### Prerequisites
+
+- Node.js (v18+ recommended)
+- Docker Desktop (to run a local Redis container)
+- MongoDB Atlas cluster string or local MongoDB instance
+
+### 1. Clone the Codebase
+
+```bash
+git clone https://github.com/Amitk1553/MailMind-AI.git
 cd MailMind-AI
-2. Configure Environment Configurations
-Create a .env file within the server/ directory:
+```
 
-Plaintext
+### 2. Configure Environment Variables
+
+Create a `.env` file inside the `server/` directory:
+
+```plaintext
 PORT=3000
 MONGO_URI=your_mongodb_connection_string
 JWT_SECRET=your_jwt_signing_secret
@@ -118,38 +143,55 @@ GEMINI_API_KEY=your_gemini_api_key
 SMTP_USER=your_gmail_address
 SMTP_PASS=your_gmail_app_password
 REDIS_URL=redis://127.0.0.1:6379
-3. Initialize Local Redis Database Container
-Ensure your Docker Desktop Engine is active, then initialize a background Redis server mapping to port 6379:
+```
 
-Bash
+### 3. Initialize Local Redis Container
+
+Ensure Docker Desktop is running, then start a background Redis server on port 6379:
+
+```bash
 docker run --name mailmind-redis -p 6379:6379 -d redis
-4. Install Dependencies and Bootstrap Infrastructure
-From the root workspace repository directory, run the concurrent startup automation tool:
+```
 
-Bash
-# Install all root, client, and server dependencies simultaneously
+### 4. Install All Dependencies
+
+From the root directory, install all workspace dependencies in one go:
+
+```bash
 npm run install-all
+```
 
-# Boot local environments (Frontend on Port 5173, Backend on Port 3000)
+### 5. Start the App
+
+```bash
 npm run dev
-Core API Specifications
-Authentication Microservices
+```
 
-POST /api/auth/register - Creates a partial user record and fires an email verification OTP token.
+That's it! Both frontend and backend start together with a single command. No need to open separate terminals.
 
-POST /api/auth/verify-otp - Validates the cryptographic token and commits user activation.
+---
 
-POST /api/auth/login - Grants a signed Bearer JWT token valid for client-side state injection.
+## Core API Specifications
 
-Generative AI & Cache Middleware Engines
+### Authentication
 
-POST /api/ai/generate-email (Protected route - requires authorization header): Evaluates client-side payload strings. Performs key-value matches in Redis memory space. On hit: returns immediately. On miss: calls Gemini 3.6 Flash, sets cache matrix (1-Hour TTL), updates MongoDB ledger, and updates user views.
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/auth/register` | Creates a user record and sends an OTP to the provided email for verification. |
+| `POST` | `/api/auth/verify-otp` | Validates the OTP token and activates the user account, returning a signed JWT. |
+| `POST` | `/api/auth/login` | Validates credentials. If the account is unverified, sends a fresh OTP and prompts verification. On success, returns a signed Bearer JWT. |
 
-GET /api/ai/history (Protected route - requires authorization header): Returns previous generated payloads directly from Redis user memory space; falls back to MongoDB querying upon initial load.
+### Generative AI & Cache
 
-Performance Optimization and Security Features
-Vite Dynamic Compilation: Code splitting and tree shaking implementation automatically optimized for high Lighthouse asset delivery.
+| Method | Endpoint | Auth Required | Description |
+|--------|----------|---------------|-------------|
+| `POST` | `/api/ai/generate-email` | ✅ | Checks Redis cache first. On hit: returns instantly. On miss: calls Gemini, caches result (1-hr TTL), and logs to MongoDB. |
+| `GET`  | `/api/ai/history` | ✅ | Returns previous generated emails from Redis cache; falls back to MongoDB on cold load. |
 
-Dockerized Environment Development: Eliminates the "works on my machine" paradigm by isolating infrastructure dependencies.
+---
 
-Cross-Origin Resource Sharing (CORS): Strict whitelist verification layers protecting server clusters from illegal cross-domain requests.
+## Performance Optimization and Security Features
+
+- **Vite Dynamic Compilation:** Code splitting and tree shaking automatically optimized for high Lighthouse asset delivery scores.
+- **Dockerized Environment:** Eliminates the "works on my machine" issue by isolating Redis infrastructure dependencies.
+- **Cross-Origin Resource Sharing (CORS):** Strict origin whitelist protecting the API server from unauthorized cross-domain requests.
